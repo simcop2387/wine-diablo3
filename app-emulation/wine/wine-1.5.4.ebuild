@@ -24,13 +24,12 @@ HOMEPAGE="http://www.winehq.org/"
 SRC_URI="${SRC_URI}
 	gecko? (
 		mirror://sourceforge/wine/wine_gecko-${GV}-x86.msi
+		win64? ( mirror://sourceforge/wine/wine_gecko-${GV}-x86_64.msi )
 	)"
-#		win64? ( mirror://sourceforge/wine/wine_gecko-${GV}-x86_64.msi ) # win64 is broken by the diablo patches for me
-
 
 LICENSE="LGPL-2.1"
 SLOT="0"
-IUSE="alsa capi cups custom-cflags elibc_glibc fontconfig +gecko gnutls gphoto2 gsm gstreamer hardened jpeg lcms ldap mp3 ncurses nls odbc openal opencl +opengl +oss +perl png samba scanner selinux ssl test +threads +truetype udisks v4l +win32 +X xcomposite xinerama xml"
+IUSE="alsa capi cups custom-cflags elibc_glibc fontconfig +gecko gnutls gphoto2 gsm gstreamer hardened jpeg lcms ldap mp3 ncurses nls odbc openal opencl +opengl +oss +perl png samba scanner selinux ssl test +threads +truetype udisks v4l +win32 +win64 +X xcomposite xinerama xml"
 REQUIRED_USE="elibc_glibc? ( threads )" #286560
 RESTRICT="test" #72375
 
@@ -89,9 +88,9 @@ RDEPEND="truetype? ( >=media-libs/freetype-2.0.0 media-fonts/corefonts )
 	ssl? ( dev-libs/openssl )
 	png? ( media-libs/libpng )
 	v4l? ( media-libs/libv4l )
+	!win64? ( ${MLIB_DEPS} )
 	win32? ( ${MLIB_DEPS} )
 	xcomposite? ( x11-libs/libXcomposite )"
-#	!win64? ( ${MLIB_DEPS} )
 DEPEND="${RDEPEND}
 	X? (
 		x11-proto/inputproto
@@ -105,10 +104,10 @@ DEPEND="${RDEPEND}
 	sys-devel/flex"
 
 src_unpack() {
-#	if use win64 ; then
-#		[[ $(( $(gcc-major-version) * 100 + $(gcc-minor-version) )) -lt 404 ]] \
-#			&& die "you need gcc-4.4+ to build 64bit wine"
-#	fi
+	if use win64 ; then
+		[[ $(( $(gcc-major-version) * 100 + $(gcc-minor-version) )) -lt 404 ]] \
+			&& die "you need gcc-4.4+ to build 64bit wine"
+	fi
 
 	if use win32 && use opencl; then
 		[[ x$(eselect opencl show) = "xintel" ]] &&
@@ -126,19 +125,14 @@ src_prepare() {
 	epatch "${FILESDIR}"/${PN}-1.1.15-winegcc.patch #260726
 	epatch "${FILESDIR}"/${PN}-1.4_rc2-multilib-portage.patch #395615
 
-	#fixes graphics changing inside game as per upstream
-      	epatch "${FILESDIR}"/39565.patch 
-        
-        #needed for diablo 3 installer and launcher as per upstream
-	epatch "${FILESDIR}"/86102.patch 
-	epatch "${FILESDIR}"/86103.patch 
-	epatch "${FILESDIR}"/86104.patch 
-	epatch "${FILESDIR}"/86105.patch 
-        #regenerate files affected by above patches
-        tools/make_requests
+        epatch "${FILESDIR}"/86263.patch # needed from upstream for installer and launcher
+        epatch "${FILESDIR}"/86264.patch 
+        epatch "${FILESDIR}"/86265.patch 
+        epatch "${FILESDIR}"/39565.patch # needed from upstream, for graphics settings
 
-        epatch_user #282735
+        tools/make_requests # rebuild some headers after the patches above
 
+	epatch_user #282735
 	eautoreconf
 	sed -i '/^UPDATE_DESKTOP_DATABASE/s:=.*:=true:' tools/Makefile.in || die
 	sed -i '/^MimeType/d' tools/wine.desktop || die #117785
@@ -195,12 +189,12 @@ src_configure() {
 	export LDCONFIG=/bin/true
 	use custom-cflags || strip-flags
 
-#	if use win64 ; then
-#		do_configure 64 --enable-win64
-#		use win32 && ABI=x86 do_configure 32 --with-wine64=../wine64
-#	else
+	if use win64 ; then
+		do_configure 64 --enable-win64
+		use win32 && ABI=x86 do_configure 32 --with-wine64=../wine64
+	else
 		ABI=x86 do_configure 32 --disable-win64
-#	fi
+	fi
 }
 
 src_compile() {
@@ -223,7 +217,7 @@ src_install() {
 	if use gecko ; then
 		insinto /usr/share/wine/gecko
 		doins "${DISTDIR}"/wine_gecko-${GV}-x86.msi
-#		use win64 && doins "${DISTDIR}"/wine_gecko-${GV}-x86_64.msi
+		use win64 && doins "${DISTDIR}"/wine_gecko-${GV}-x86_64.msi
 	fi
 	if ! use perl ; then
 		rm "${D}"usr/bin/{wine{dump,maker},function_grep.pl} "${D}"usr/share/man/man1/wine{dump,maker}.1 || die
@@ -232,10 +226,10 @@ src_install() {
 	if use win32 || ! use win64; then
 		pax-mark psmr "${D}"usr/bin/wine{,-preloader} #255055
 	fi
-#	use win64 && pax-mark psmr "${D}"usr/bin/wine64{,-preloader}
+	use win64 && pax-mark psmr "${D}"usr/bin/wine64{,-preloader}
 
-#	if use win64 && ! use win32; then
-#		dosym /usr/bin/wine{64,} # 404331
-#		dosym /usr/bin/wine{64,}-preloader
-#	fi
+	if use win64 && ! use win32; then
+		dosym /usr/bin/wine{64,} # 404331
+		dosym /usr/bin/wine{64,}-preloader
+	fi
 }
